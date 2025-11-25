@@ -47,9 +47,9 @@ pipeline {
                     echo "Custom Property (asset param): ${customProperty}"
                     
                     // Optionally set environment variables for next stages
-                    env.GROUP_ID = groupId
-                    env.ARTIFACT_ID = artifactId
-                    env.VERSION = version
+                    env.groupId = groupId
+                    env.assetId = assetId
+                    env.version = version
                     env.ASSET_PARAM = customProperty
                 }
             }
@@ -59,7 +59,7 @@ pipeline {
 	stage('determine-profile-from-pom') {
             steps {
                 script {
-                    if ( ("${env.assetId}" == "xapi") or ("${env.assetId}" == "xpapi" )) {
+                    if ( ("${env.assetId}" == "xapi") || ("${env.assetId}" == "xpapi" )) {
                        environment {PROFILE = "-Pexperience"}
             		echo "profile is set to ${env.profile}"
 
@@ -70,23 +70,39 @@ pipeline {
 		            }
 	             }
 	} //stage
- 
+
+	stage('Echo Parameters') {
+            steps {
+                script {
+                    // Access parameters using the 'params' object
+                    echo "Username: ${params.USERNAME}"
+                    echo "Debug Mode: ${params.DEBUG_MODE}"
+                    echo "Environment: ${params.ENVIRONMENT}"
+                    echo "Password is set: ${params.PASSWORD?.length() > 0}"
+					echo "profile  : env.profile "
+					echo "groupId: ${params.groupId}"
+					echo "assetId: ${params.assetId}"
+					echo "version: ${params.version}"
+					
+                }
+            }
+    }//stage
+		
 	//Check if asset exists
 
 	stage('Check Asset Existence') {
             steps {
                 script {
                     // Step 1: Get OAuth2 token
-		            if ( ("${env.assetId}" == "xapi") or ("${env.assetId}" == "xpapi" )) {
+		            if ( env.assetId == "xapi") || ( env.assetId == "xpapi" )) {
 			            def response = sh(
                         returnStdout: true,
-                        script: """curl -s -X POST \\
-                        https://anypoint.mulesoft.com/accounts/api/v2/oauth2/token \\ -H 'Content-Type: application/json' \\ -d 'client_id=${env.ANYPNT_CLIENT_ID}&client_secret=${env.ANYPNT_CLIENT_SECRET}&grant_type=client_credentials'""").trim()
+                        script: """curl -s -X POST \\ https://anypoint.mulesoft.com/accounts/api/v2/oauth2/token \\ -H 'Content-Type: application/json' \\ -d 'client_id=${env.ANYPNT_CLIENT_ID}&client_secret=${env.ANYPNT_CLIENT_SECRET}&grant_type=client_credentials'""").trim()
                     
                         def json = readJSON text: response
                         def token = json.access_token                    
                         if (!token) {
-                        error "Failed to obtain access token from Anypoint Platform."
+	                        error "Failed to obtain access token from Anypoint Platform."
                         }
 
 		            }
@@ -108,42 +124,7 @@ pipeline {
             }
         }//stage
                
-	    stage('Echo Parameters') {
-            steps {
-                script {
-                    // Access parameters using the 'params' object
-                    echo "Username: ${params.USERNAME}"
-                    echo "Debug Mode: ${params.DEBUG_MODE}"
-                    echo "Environment: ${params.ENVIRONMENT}"
-                    echo "Password is set: ${params.PASSWORD?.length() > 0}"
-                }
-            }
-        }//stage
-        stage('Checkout') {
-            steps {
-                // Fetch the branch parameter dynamically
-                echo "Checking out branch: ${params.BRANCH_NAME}"
-
-                // Checkout the specified branch
-                checkout([$class: 'GitSCM',
-                          branches: [[name: "*/${params.BRANCH_NAME}"]],
-                          userRemoteConfigs: [[url: 'https://github.com/your-repo/your-project.git']]])
-            }
-        } //stage
-
-        stage('munit Tests') {
-	    when {
-                expression { return params.RUN_TESTS }
-            }
-            steps {
-                sh "${MAVEN_HOME}/bin/mvn test"
-            }
-            post {
-                always {
-                    junit '**/target/surefire-reports/*.xml'
-                }
-            }
-        }//stage
+      // deployment based on environment
 
         stage('Environment-Based Deployment') {
             steps {
